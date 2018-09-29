@@ -32,14 +32,16 @@
   include_role:
     name: ansible_go
 
-- name: remove old geth+EVMC
+- name: ensure src directory exists
   tags:
     - install-deps
   file:
     path: {{path}}/src
     state: directory
+    recurse: yes
 
 - name: remove old geth+EVMC
+  when: hera is defined
   tags:
     - install-deps
   file:
@@ -47,6 +49,7 @@
     state: absent
 
 - name: Git clone Geth+EVMC
+  when: hera is defined
   tags:
     - install-deps
   git:
@@ -91,21 +94,47 @@
 
 - name: remove old config
   file:
-    path: {{path}}/config
+    path: {{path}}/config/{{node-name}}
     state: absent
 
 - name: create config dir
   file:
-    path: {{path}}/config
+    path: {{path}}/config/{{node-name}}
     state: present
 
 - name: download genesis to config dir
   get_url:
     url: {{genesis-url}}
-    dest: {{path}}/config/genesis.json
+    dest: {{path}}/config/{{node-name}}/genesis.json
 
-- name: start geth
-    PATH=$PATH:/usr/local/go/bin
-shell: |
-  {{path}}/src/geth-evmc/build/bin/geth --datadir {{path}}/db/{{nodeid}} init {{path}}/config/genesis.json
-  nohup /home/ewasm/go-ethereum/build/bin/geth --etherbase {{etherbase}} --nodekey {{nodekey}} --rpc --rpcapi "web3,net,eth,debug" --rpcvhosts=* --rpcaddr "0.0.0.0" --rpccorsdomain "*" --vmodule "miner=12,rpc=12" --mine --miner.threads 1 --bootnodes {{bootnodes}} --port {{listen-port}}  &> {{path}}/logs/{{nodeid}}.log
+- name: start geth+Wagon (mining mode)
+  when: ( miner is defined ) and (wagon is defined)
+  env:
+      PATH=$PATH:/usr/local/go/bin
+  shell: |
+    {{path}}/src/geth-wagon/build/bin/geth --datadir {{path}}/db/{{node-name}} init {{path}}/config/{{node-name}}/genesis.json
+    nohup {{path}}/src/geth-wagon/build/bin/geth --etherbase {{etherbase}} --nodekey {{nodekey}} --rpc --rpcapi "web3,net,eth,debug" --rpcvhosts=* --rpcaddr "0.0.0.0" --rpccorsdomain "*" --vmodule "miner=12,rpc=12" --mine --miner.threads 1 --bootnodes {{bootnodes}} --port {{listen-port}}  &> {{path}}/logs/{{node-name}}.log
+
+- name: start geth+Wagon
+  when: (not ( miner is defined ) ) and (wagon is defined)
+  env:
+      PATH=$PATH:/usr/local/go/bin
+  shell: |
+    {{path}}/src/geth-wagon/build/bin/geth --datadir {{path}}/db/{{node-name}} init {{path}}/config/{{node-name}}/genesis.json
+    nohup {{path}}/src/geth-wagon/build/bin/geth --etherbase {{etherbase}} --nodekey {{nodekey}} --rpc --rpcapi "web3,net,eth,debug" --rpcvhosts=* --rpcaddr "0.0.0.0" --rpccorsdomain "*" --vmodule "miner=12,rpc=12" --bootnodes {{bootnodes}} --port {{listen-port}}  &> {{path}}/logs/{{node-name}}.log
+
+- name: start geth+EVMC
+  when: not ( miner is defined )
+  env:
+      PATH=$PATH:/usr/local/go/bin
+  shell: |
+    {{path}}/src/geth-evmc/build/bin/geth --datadir {{path}}/db/{{node-name}} init {{path}}/config/{{node-name}}/genesis.json
+    nohup {{path}}/src/geth-evmc/build/bin/geth --etherbase {{etherbase}} --nodekey {{nodekey}} --rpc --rpcapi "web3,net,eth,debug" --rpcvhosts=* --rpcaddr "0.0.0.0" --rpccorsdomain "*" --vmodule "miner=12,rpc=12" --bootnodes {{bootnodes}} --port {{listen-port}}  &> {{path}}/logs/{{node-name}}.log
+
+- name: start geth+EVMC (mining mode)
+  when: miner is defined
+  env:
+      PATH=$PATH:/usr/local/go/bin
+  shell: |
+    {{path}}/src/geth-evmc/build/bin/geth --datadir {{path}}/db/{{node-name}} init {{path}}/config/{{node-name}}/genesis.json
+    nohup {{path}}/src/geth-evmc/build/bin/geth --etherbase {{etherbase}} --nodekey {{nodekey}} --rpc --rpcapi "web3,net,eth,debug" --rpcvhosts=* --rpcaddr "0.0.0.0" --rpccorsdomain "*" --vmodule "miner=12,rpc=12" --mine --miner.threads 1 --bootnodes {{bootnodes}} --port {{listen-port}}  &> {{path}}/logs/{{node-name}}.log
