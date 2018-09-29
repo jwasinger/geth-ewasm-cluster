@@ -1,0 +1,111 @@
+---
+- name: install make
+  tags:
+    - install-deps
+  package:
+    name: make
+    state: present
+
+- name: install cmake
+  tags:
+    - install-deps
+  package:
+    name: cmake
+    state: present
+
+- name: install g++
+  tags:
+    - install-deps
+  package:
+    name: g++
+    state: present
+
+- name: Include docker role
+  tags:
+    - install-deps
+  include_role:
+    name: geerlingguy.docker
+
+- name: make sure go installed
+  tags:
+    - install-deps
+  include_role:
+    name: ansible_go
+
+- name: remove old geth+EVMC
+  tags:
+    - install-deps
+  file:
+    path: {{path}}/src
+    state: directory
+
+- name: remove old geth+EVMC
+  tags:
+    - install-deps
+  file:
+    path: {{path}}/src/geth-evmc
+    state: absent
+
+- name: Git clone Geth+EVMC
+  tags:
+    - install-deps
+  git:
+    repo: {{geth-evmc-repo}}
+    version: {{geth-evmc-branch}}
+    dest: {{path}}/src/geth-evmc
+    recursive: no
+
+- name: build Geth
+  tags:
+    - build
+  shell:  |
+    PATH=$PATH:/usr/local/go/bin
+    make
+  args:
+    chdir: {{path}}/src/geth-evmc
+
+- name: remove old geth+Hera
+  tags:
+    - install-deps
+  file:
+    path: {{path}}/src/geth-hera
+    state: absent
+
+- name: Git clone hera
+  tags:
+    - install-deps
+  git:
+    repo: 'https://github.com/cdetrio/hera'
+    dest: {{path}}/src/hera
+    version: testnet
+    recursive: yes
+
+- name: build hera
+  tags:
+    - build
+  shell: |
+    cmake -DBUILD_SHARED_LIBS=ON -DHERA_DEBUGGING=ON .
+    make
+  args:
+    chdir: {{path}}/src/hera
+
+- name: remove old config
+  file:
+    path: {{path}}/config
+    state: absent
+
+- name: create config dir
+  file:
+    path: {{path}}/config
+    state: present
+
+- name: download genesis to config dir
+  get_url:
+    url: {{genesis-url}}
+    dest: {{path}}/config/genesis.json
+
+- name: start geth
+    PATH=$PATH:/usr/local/go/bin
+shell: |
+  {{path}}/src/geth-evmc/build/bin/geth --datadir {{path}}/db/{{nodeid}} init {{path}}/config/genesis.json
+  nohup /home/ewasm/go-ethereum/build/bin/geth --etherbase {{etherbase}} --nodekey {{nodekey}} --rpc --rpcapi "web3,net,eth,debug" --rpcvhosts=* --rpcaddr "0.0.0.0" --rpccorsdomain "*" --vmodule "miner=12,rpc=12" --mine --miner.threads 1 --bootnodes {{bootnodes}} --port {{listen-port}}  &> {{path}}/logs/{{nodeid}}.log
